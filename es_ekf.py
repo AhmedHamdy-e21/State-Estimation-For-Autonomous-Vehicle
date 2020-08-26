@@ -46,7 +46,7 @@ imu_f = data['imu_f']
 imu_w = data['imu_w']
 gnss = data['gnss']
 lidar = data['lidar']
-print(imu_f.data[1])
+
 
 
 ################################################################################################
@@ -164,92 +164,53 @@ def measurement_update(sensor_var, p_cov_check, y_k, p_check, v_check, q_check):
 # Now that everything is set up, we can start taking in the sensor data and creating estimates
 # for our state in a loop.
 ################################################################################################
-
+F_k = np.eye(9)
 for k in range(1, imu_f.data.shape[0]):  # start at 1 b/c we have initial prediction from gt
     delta_t = imu_f.t[k] - imu_f.t[k - 1]
 
     # 1. Update state with IMU inputs
     C_ns = Quaternion(*q_est[k - 1]).to_mat()  # I don't know why it's *
-    print("heeeereee")
-    print(p_est[k-1].shape)
-    print(v_est[k-1].shape)
-    print(C_ns.shape)
-    print(imu_f.data[k-1].shape)
-    print(delta_t.shape)
-    print(g.shape)
     p_est[k] = p_est[k-1] + delta_t * v_est[k-1] + (0.5 * delta_t**2) * ( C_ns @ imu_f.data[k-1] + g)
-
     v_est[k] = v_est[k-1] + delta_t * ( C_ns @ imu_f.data[k-1] + g)
-
     q_tempo=Quaternion(axis_angle=imu_w.data[k-1]*delta_t)
-
     q_est[k]=q_tempo.quat_mult_right(q_est[k-1])
     # 1.1 Linearize the motion model and compute Jacobians
-    F_k = np.eye(9)
-
     F_k[0:3, 3:6] = np.eye(3) * delta_t
-
     F_k[3:6, 3:6] = np.eye(3)
-
     F_k[3:6, 6:9] = -(C_ns@skew_symmetric(imu_f.data[k-1].reshape((3,1)))) * delta_t
-
+    print(F_k)
     vfa=var_imu_f**2
-
     vfw=var_imu_w**2
-
-    Q_km= delta_t**2*np.diag([vfa,vfa,vfa,vfw,vfw,vfw]) 
-
+    Q_km= (delta_t**2)*np.diag([vfa,vfa,vfa,vfw,vfw,vfw]) 
 
     # 2. Propagate uncertainty
     p_cov[k]= F_k @ p_cov[k-1] @ F_k.T + l_jac@Q_km@l_jac.T
 
     # 3. Check availability of GNSS and LIDAR measurements
-    ####
-    while gnss_i < gnss.t.shape[0] and gnss.t[gnss_i] <= imu_f.t[k]:
-    
+    #### 
+'''     while gnss_i < gnss.t.shape[0] and gnss.t[gnss_i] <= imu_f.t[k]:
         if gnss.t[gnss_i] == imu_f.t[k]:
-
             y_k = gnss.data[gnss_i]
-
             print("gnss - measurement_update")
-
             #print(y_k, p_k)
-
             p_k, v_k, q_k, p_cov_check = measurement_update(var_gnss, p_cov_check, y_k, p_k, v_k, q_k)
-
             #p_est[k], v_est[k], q_est[k], p_cov[k] = measurement_update(var_gnss, p_cov_check, y_k, p_k, v_k, q_k)
-
             break
-
         gnss_i = gnss_i + 1
-
         while lidar_i < lidar.t.shape[0] and lidar.t[lidar_i] <= imu_f.t[k]:
-
             if lidar.t[lidar_i] == imu_f.t[k]:
-
                 y_k = lidar.data[lidar_i]
-
                 print("lidar - measurement_update")
-
                 p_k, v_k, q_k, p_cov_check = measurement_update(var_lidar, p_cov_check, y_k, p_k, v_k, q_k)
-
                 #p_est[k], v_est[k], q_est[k], p_cov[k] = measurement_update(var_lidar, p_cov_check, y_k, p_k, v_k, q_k)
-
                 break
-
         lidar_i = lidar_i + 1
-
     # Update states (save)
-
-    #print(p_est[k], p_k)
-
+    print(p_est[k], p_k)
     p_est[k, :] = p_k
-
     v_est[k, :] = v_k
-
     q_est[k, :] = q_k
-
-    p_cov[k, :, :] = p_cov_check 
+    p_cov[k, :, :] = p_cov_check  '''
 ####
 
     # Update states (save)
