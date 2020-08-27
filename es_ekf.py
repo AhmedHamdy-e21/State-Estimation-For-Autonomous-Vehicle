@@ -4,6 +4,7 @@
 # University of Toronto Institute for Aerospace Studies
 import pickle   
 import numpy as np
+from numpy import matmul
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 from rotations import angle_normalize, rpy_jacobian_axis_angle, skew_symmetric, Quaternion
@@ -16,6 +17,7 @@ from rotations import angle_normalize, rpy_jacobian_axis_angle, skew_symmetric, 
 ################################################################################################
 with open('data/pt1_data.pkl', 'rb') as file:
     data = pickle.load(file)
+    
 
 ################################################################################################
 # Each element of the data dictionary is stored as an item from the data dictionary, which we
@@ -137,18 +139,21 @@ lidar_i = 0
 # a function for it.
 ################################################################################################
 def measurement_update(sensor_var, p_cov_check, y_k, p_check, v_check, q_check):
+
     # 3.1 Compute Kalman Gain
-    K_k=p_cov_check@h_jac.T@np.linalg.inv(h_jac@p_cov_check@h_jac.T+sensor_var@np.eye(3))  # NNNNNnote here that the variance is not so true because we have to multiply it by the identity
+    tempoo=np.linalg.inv((h_jac@p_cov_check@h_jac.T)+sensor_var*np.eye(3))
+    K_k=p_cov_check@h_jac.T@tempoo  # NNNNNnote here that the variance is not so true because we have to multiply it by the identity
 
     # 3.2 Compute error state
 
     delta_x=K_k@(y_k-p_check)
+    print(delta_x.shape)
 
     # 3.3 Correct predicted state
 
-    p_hat=p_check+delta_x[0]
-    v_hat=v_check+delta_x[1]
-    delta_q=Quaternion(axis_angle=delta_x[2])
+    p_hat=p_check+delta_x[:3]
+    v_hat=v_check+delta_x[3:6]
+    delta_q=Quaternion(axis_angle=delta_x[6:])
 
     q_hat=delta_q.quat_mult_left(q_check)
 
@@ -170,15 +175,15 @@ for k in range(1, imu_f.data.shape[0]):  # start at 1 b/c we have initial predic
 
     # 1. Update state with IMU inputs
     C_ns = Quaternion(*q_est[k - 1]).to_mat()  # I don't know why it's *
-    p_est[k] = p_est[k-1] + delta_t * v_est[k-1] + (0.5 * delta_t**2) * ( C_ns @ imu_f.data[k-1] + g)
-    v_est[k] = v_est[k-1] + delta_t * ( C_ns @ imu_f.data[k-1] + g)
-    q_tempo=Quaternion(axis_angle=imu_w.data[k-1]*delta_t)
+    p_est[k] = p_est[k-1] + delta_t * v_est[k-1] + (0.5 * delta_t**2) * ( C_ns @ (imu_f.data[k-1] + g))
+    v_est[k] = v_est[k-1] + delta_t * ( C_ns @ (imu_f.data[k-1] + g))
+    q_tempo=Quaternion(euler=imu_w.data[k-1]*delta_t)
     q_est[k]=q_tempo.quat_mult_right(q_est[k-1])
     # 1.1 Linearize the motion model and compute Jacobians
     F_k[0:3, 3:6] = np.eye(3) * delta_t
     F_k[3:6, 3:6] = np.eye(3)
     F_k[3:6, 6:9] = -(C_ns@skew_symmetric(imu_f.data[k-1].reshape((3,1)))) * delta_t
-    print(F_k)
+    
     vfa=var_imu_f**2
     vfw=var_imu_w**2
     Q_km= (delta_t**2)*np.diag([vfa,vfa,vfa,vfw,vfw,vfw]) 
@@ -188,6 +193,13 @@ for k in range(1, imu_f.data.shape[0]):  # start at 1 b/c we have initial predic
 
     # 3. Check availability of GNSS and LIDAR measurements
     #### 
+    for i in range(len(gnss.t)):
+        if abs(gnss.t[i] - imu_f.t[k]) < 0.01:
+            p_est[k], v_est[k], q_est[k], p_cov[k] = measurement_update(var_gnss, p_cov[k], gnss.data[i], p_est[k], v_est[k], q_est[k])
+    for i in range(len(lidar.t)):
+        if abs(lidar.t[i] - imu_f.t[k]) < 0.01:
+            p_est[k], v_est[k], q_est[k], p_cov[k] = measurement_update(var_lidar, p_cov[k], lidar.data[i], p_est[k], v_est[k], q_est[k])
+
 '''     while gnss_i < gnss.t.shape[0] and gnss.t[gnss_i] <= imu_f.t[k]:
         if gnss.t[gnss_i] == imu_f.t[k]:
             y_k = gnss.data[gnss_i]
@@ -211,6 +223,7 @@ for k in range(1, imu_f.data.shape[0]):  # start at 1 b/c we have initial predic
     v_est[k, :] = v_k
     q_est[k, :] = q_k
     p_cov[k, :, :] = p_cov_check  '''
+    
 ####
 
     # Update states (save)
