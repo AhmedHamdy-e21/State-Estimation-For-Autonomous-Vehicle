@@ -139,6 +139,7 @@ lidar_i = 0
 # a function for it.
 ################################################################################################
 def measurement_update(sensor_var, p_cov_check, y_k, p_check, v_check, q_check):
+    
 
     # 3.1 Compute Kalman Gain
     tempoo=np.linalg.inv((h_jac@p_cov_check@h_jac.T)+sensor_var*np.eye(3))
@@ -146,16 +147,16 @@ def measurement_update(sensor_var, p_cov_check, y_k, p_check, v_check, q_check):
 
     # 3.2 Compute error state
 
-    delta_x=K_k@(y_k-p_check)
-    print(delta_x.shape)
+    delta_x=(y_k-p_check)
+    #print(delta_x.shape)
 
     # 3.3 Correct predicted state
 
-    p_hat=p_check+delta_x[:3]
-    v_hat=v_check+delta_x[3:6]
-    delta_q=Quaternion(axis_angle=delta_x[6:])
+    p_hat=p_check+(K_k@delta_x)[:3]
+    v_hat=v_check+(K_k@delta_x)[3:6]
+    delta_q=Quaternion(axis_angle=(K_k@delta_x)[6:])
 
-    q_hat=delta_q.quat_mult_left(q_check)
+    q_hat=delta_q.quat_mult_right(q_check)
 
 
     # 3.4 Compute corrected covariance
@@ -175,8 +176,8 @@ for k in range(1, imu_f.data.shape[0]):  # start at 1 b/c we have initial predic
 
     # 1. Update state with IMU inputs
     C_ns = Quaternion(*q_est[k - 1]).to_mat()  # I don't know why it's *
-    p_est[k] = p_est[k-1] + delta_t * v_est[k-1] + (0.5 * delta_t**2) * ( C_ns @ (imu_f.data[k-1] + g))
-    v_est[k] = v_est[k-1] + delta_t * ( C_ns @ (imu_f.data[k-1] + g))
+    p_est[k] = p_est[k-1] + delta_t * v_est[k-1] + (0.5 * (delta_t**2)) * ( C_ns @ imu_f.data[k-1] + g)
+    v_est[k] = v_est[k-1] + delta_t * ( C_ns @ imu_f.data[k-1] + g)
     q_tempo=Quaternion(euler=imu_w.data[k-1]*delta_t)
     q_est[k]=q_tempo.quat_mult_right(q_est[k-1])
     # 1.1 Linearize the motion model and compute Jacobians
